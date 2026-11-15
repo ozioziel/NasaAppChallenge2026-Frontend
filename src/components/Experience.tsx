@@ -23,7 +23,8 @@ gsap.ticker.lagSmoothing(0);
 
 const ObservatoryGlobe = dynamic(() => import('./globe/ObservatoryGlobe'), { ssr: false, loading: () => null });
 const IntroSequence = dynamic(() => import('./intro/IntroSequence'), { ssr: false, loading: () => null });
-const RegionalView = dynamic(() => import('./regional/RegionalView').then((m) => m.RegionalView), {
+const loadRegionalView = () => import('./regional/RegionalView');
+const RegionalView = dynamic(() => loadRegionalView().then((m) => m.RegionalView), {
   ssr: false,
   loading: () => <div className="regional regional--loading">Cargando vista regional…</div>,
 });
@@ -92,6 +93,18 @@ function Stage() {
       useStore.getState().finishIntro();
     }
   }, [webgl, setWebglFailed]);
+
+  // Precarga la vista regional (Leaflet incluido) en segundo plano tras la intro, para que
+  // esté lista cuando la cámara atraviese las nubes.
+  const phase = useStore((s) => s.phase);
+  useEffect(() => {
+    if (phase !== 'observatory') return;
+    const id = window.setTimeout(() => {
+      void loadRegionalView();
+      void import('leaflet');
+    }, 2500);
+    return () => window.clearTimeout(id);
+  }, [phase]);
 
   return (
     <>

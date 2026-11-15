@@ -119,7 +119,8 @@ export const defaultSettings: Settings = {
   ambient: true,
   clouds: true,
   bloom: true,
-  autoRotate: false,
+  // Gira lentamente por defecto (se detiene al seleccionar una celda o con la tecla R).
+  autoRotate: true,
   reducedMotion: 'auto',
   lighting: 'cinematic',
   showGrid: true,
@@ -183,6 +184,8 @@ export const useStore = create<State>()(
       select: (selection, options) =>
         set((s) => ({
           selection,
+          // Al inspeccionar algo, el planeta deja de girar para no perder la zona.
+          settings: selection && s.settings.autoRotate ? { ...s.settings, autoRotate: false } : s.settings,
           panel: selection
             ? {
                 ...s.panel,
@@ -220,7 +223,7 @@ export const useStore = create<State>()(
       setWebglFailed: (webglFailed) => set({ webglFailed }),
     }),
     {
-      name: 'observatorio-settings-v1',
+      name: 'vigia-settings-v2',
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ settings: s.settings }),
       merge: (persisted, current) => {

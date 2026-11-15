@@ -292,7 +292,7 @@ function AboutDrawer() {
       <Item><DemoBadge /></Item>
       <Item>
         <p>
-          <strong>{brand.fullName}</strong> explora la actividad térmica histórica observada por los sensores MODIS y VIIRS,
+          <strong>{brand.name}</strong> es una estrella vigilante: explora la actividad térmica histórica observada por los sensores MODIS y VIIRS,
           la armoniza en una serie comparable sobre una grilla hexagonal H3 y añade un pronóstico experimental para el día siguiente.
           Reto: <em>{brand.challenge}</em> ({brand.event}).
         </p>
@@ -334,7 +334,7 @@ function AboutDrawer() {
       </Item>
       <Item>
         <h3>Nombre del proyecto</h3>
-        <p className="muted small">Nombre provisional «{brand.name}» (clave {brand.codename}). Propuestas: {nameProposals.join(' · ')}. Se cambia en <code>src/config/brand.ts</code>.</p>
+        <p className="muted small">«{brand.name}»: el proyecto es una estrella vigilante que observa la Tierra. Alternativas con el mismo concepto: {nameProposals.slice(1).join(' · ')}. Se cambia en <code>src/config/brand.ts</code>.</p>
       </Item>
     </div>
   );

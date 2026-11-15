@@ -31,29 +31,36 @@ const starVertex = /* glsl */ `
 attribute float size;
 attribute float phase;
 attribute vec3 tint;
+attribute float spike;
 uniform float uTime;
 uniform float uPixelRatio;
 uniform float uOpacity;
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSpike;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  float tw = 0.78 + 0.22 * sin(uTime * (0.35 + phase * 1.3) + phase * 37.0);
+  // Centelleo: las estrellas brillantes parpadean un poco más (efecto atmosférico estilizado).
+  float tw = 0.72 + 0.28 * sin(uTime * (0.4 + phase * 1.6) + phase * 37.0);
   vColor = tint;
-  vAlpha = tw * uOpacity;
+  vAlpha = mix(1.0, tw, 0.6 + spike * 0.4) * uOpacity;
+  vSpike = spike;
   gl_PointSize = size * uPixelRatio * (0.9 + 0.1 * tw);
 }`;
 
 const starFragment = /* glsl */ `
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSpike;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = length(c) * 2.0;
-  float core = exp(-d * d * 7.0);
-  float halo = exp(-d * 3.2) * 0.25;
-  float a = (core + halo) * vAlpha;
+  float core = exp(-d * d * 9.0);
+  float halo = exp(-d * 3.0) * 0.3;
+  // Destello en cruz para las estrellas más brillantes.
+  float cross = (exp(-abs(c.y) * 60.0) * exp(-abs(c.x) * 5.0) + exp(-abs(c.x) * 60.0) * exp(-abs(c.y) * 5.0)) * vSpike;
+  float a = (core + halo + cross * 0.85) * vAlpha;
   if (a < 0.003) discard;
   gl_FragColor = vec4(vColor * a, a);
 }`;
@@ -67,12 +74,13 @@ export interface Starfield {
 }
 
 export function createStarfield(quality: Quality, radius = 22_000, pixelRatio = 1): Starfield {
-  const count = quality === 'high' ? 7000 : quality === 'balanced' ? 4200 : 2200;
+  const count = quality === 'high' ? 14000 : quality === 'balanced' ? 10000 : 5000;
   const rand = seeded(2026);
   const positions = new Float32Array(count * 3);
   const sizes = new Float32Array(count);
   const phases = new Float32Array(count);
   const tints = new Float32Array(count * 3);
+  const spikes = new Float32Array(count);
   const palette = [
     new THREE.Color('#9fbfff'), new THREE.Color('#cfe0ff'), new THREE.Color('#ffffff'),
     new THREE.Color('#fff1d6'), new THREE.Color('#ffd2a1'),
@@ -87,11 +95,13 @@ export function createStarfield(quality: Quality, radius = 22_000, pixelRatio = 
     }
     const r = radius * (0.8 + rand() * 0.4);
     positions.set([dir.x * r, dir.y * r, dir.z * r], i * 3);
-    const m = Math.pow(rand(), 5.5);
-    sizes[i] = 0.9 + m * 3.4;
+    const m = Math.pow(rand(), 4.2);
+    const bright = rand() < 0.007;
+    sizes[i] = bright ? 9 + rand() * 6 : 1.3 + m * 4.2;
+    spikes[i] = bright ? 0.7 + rand() * 0.3 : 0;
     phases[i] = rand();
     const c = palette[Math.floor(Math.pow(rand(), 0.8) * palette.length)];
-    const dim = 0.55 + 0.45 * rand();
+    const dim = bright ? 1 : 0.7 + 0.3 * rand();
     tints.set([c.r * dim, c.g * dim, c.b * dim], i * 3);
   }
   const geometry = new THREE.BufferGeometry();
@@ -99,6 +109,7 @@ export function createStarfield(quality: Quality, radius = 22_000, pixelRatio = 
   geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
   geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
+  geometry.setAttribute('spike', new THREE.BufferAttribute(spikes, 1));
   const material = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uPixelRatio: { value: pixelRatio }, uOpacity: { value: 1 } },
     vertexShader: starVertex,
@@ -153,8 +164,8 @@ export function createStarfield(quality: Quality, radius = 22_000, pixelRatio = 
   };
 }
 
-/** La vía láctea debe ser apenas perceptible: nunca compite con el planeta ni con los datos. */
-const SKY_OPACITY = 0.38;
+/** Vía láctea visible pero suave: da profundidad sin competir con el planeta ni los datos. */
+const SKY_OPACITY = 0.75;
 let skyTexture: THREE.CanvasTexture | null = null;
 
 /** Banda galáctica y nebulosas tenues pintadas en un canvas equirectangular (una sola vez). */
@@ -183,11 +194,12 @@ function getSkyTexture(): THREE.CanvasTexture {
     const x = u * w;
     const y = h / 2 + Math.sin(u * Math.PI * 2) * h * 0.28 + (rand() - 0.5) * h * 0.09;
     const core = Math.exp(-Math.pow((u - 0.62) / 0.16, 2));
-    blob(x, y, 10 + rand() * 30, 'rgba(150,165,215,A)', 0.006 + 0.012 * core + rand() * 0.004);
+    blob(x, y, 10 + rand() * 30, 'rgba(160,172,220,A)', 0.008 + 0.016 * core + rand() * 0.005);
   }
-  // Nebulosas violetas y verdeazuladas dispersas.
-  for (let i = 0; i < 18; i++) {
-    blob(rand() * w, rand() * h, 30 + rand() * 80, rand() < 0.5 ? 'rgba(95,55,150,A)' : 'rgba(30,95,110,A)', 0.015 + rand() * 0.02);
+  // Nebulosas violetas, magenta y verdeazuladas dispersas.
+  const nebulae = ['rgba(105,60,170,A)', 'rgba(30,105,125,A)', 'rgba(150,55,110,A)'];
+  for (let i = 0; i < 22; i++) {
+    blob(rand() * w, rand() * h, 30 + rand() * 90, nebulae[Math.floor(rand() * nebulae.length)], 0.03 + rand() * 0.035);
   }
   // Carriles de polvo oscuro sobre la banda.
   ctx.globalCompositeOperation = 'destination-out';
@@ -223,18 +235,19 @@ export function createDust(quality: Quality, inner = 160, outer = 1400, pixelRat
     const dir = randomOnSphere(rand);
     const r = inner + Math.pow(rand(), 0.7) * (outer - inner);
     positions.set([dir.x * r, dir.y * r, dir.z * r], i * 3);
-    sizes[i] = 0.8 + rand() * 1.6;
+    sizes[i] = 1 + rand() * 2.2;
     phases[i] = rand();
     const warm = rand() < 0.25;
-    tints.set(warm ? [0.55, 0.48, 0.42] : [0.45, 0.55, 0.7], i * 3);
+    tints.set(warm ? [0.7, 0.6, 0.5] : [0.55, 0.68, 0.85], i * 3);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
   geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
+  geometry.setAttribute('spike', new THREE.BufferAttribute(new Float32Array(count), 1));
   const material = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uPixelRatio: { value: pixelRatio }, uOpacity: { value: 0.55 } },
+    uniforms: { uTime: { value: 0 }, uPixelRatio: { value: pixelRatio }, uOpacity: { value: 0.7 } },
     vertexShader: starVertex,
     fragmentShader: starFragment,
     transparent: true,
@@ -297,7 +310,15 @@ interface Comet {
   speed: number;
   age: number;
   life: number;
+  /** Separación de la cola (fracción de la velocidad por partícula). */
+  spacing: number;
+  fadeIn: number;
+  /** Tiempo que la cola tarda en desaparecer tras el recorrido. */
+  tailOut: number;
+  tailAlpha: number;
 }
+
+type FlyerKind = 'comet' | 'meteor';
 
 interface Burst {
   points: THREE.Points;
@@ -311,6 +332,8 @@ export interface CometSystem {
   update: (dt: number, camera: THREE.Camera, enabled: boolean) => void;
   /** Devuelve true si el clic alcanzó un cometa (y lo fragmenta). */
   hitTest: (x: number, y: number, width: number, height: number, camera: THREE.Camera) => boolean;
+  /** ¿Hay un cometa bajo el cursor? (para indicar que se puede tocar) */
+  isNear: (x: number, y: number, width: number, height: number, camera: THREE.Camera) => boolean;
   spawnNow: (camera: THREE.Camera) => void;
   dispose: () => void;
 }
@@ -320,7 +343,10 @@ export function createComets(pixelRatio = 1): CometSystem {
   const comets: Comet[] = [];
   const bursts: Burst[] = [];
   const rand = seeded(Date.now() & 0xffff);
-  let nextSpawn = 9 + rand() * 12;
+  // El primero llega pronto para que se note que el espacio está vivo.
+  let nextSpawn = 4 + rand() * 3;
+  // Estrellas fugaces: breves y frecuentes.
+  let nextMeteor = 1.5 + rand() * 2;
   const material = new THREE.ShaderMaterial({
     uniforms: { uPixelRatio: { value: pixelRatio } },
     vertexShader: cometVertex,
@@ -340,13 +366,41 @@ export function createComets(pixelRatio = 1): CometSystem {
     return g;
   }
 
-  function spawn(camera: THREE.Camera) {
+  const COMET_TAIL = [new THREE.Color('#f4fbff'), new THREE.Color('#5fd7d2')];
+  const METEOR_TAIL = [new THREE.Color('#ffffff'), new THREE.Color('#ffd9a0')];
+
+  function spawn(camera: THREE.Camera, kind: FlyerKind = 'comet') {
+    const meteor = kind === 'meteor';
     // Trayectoria en el plano de la vista, a gran distancia, cruzando el encuadre.
-    const depth = 5200 + rand() * 2600;
-    const fromLeft = rand() < 0.5;
-    const y0 = 0.35 + rand() * 0.5;
-    const a = new THREE.Vector3(fromLeft ? -1.25 : 1.25, y0, 0.5).unproject(camera);
-    const b = new THREE.Vector3(fromLeft ? 0.6 + rand() * 0.6 : -0.6 - rand() * 0.6, y0 - 0.4 - rand() * 0.5, 0.5).unproject(camera);
+    const depth = meteor ? 3200 + rand() * 1600 : 5200 + rand() * 2600;
+    // Se prefieren trayectorias que no crucen el centro (donde está el planeta), para que
+    // el cometa o la estrella fugaz se vean en lugar de pasar ocultos detrás de la Tierra.
+    const clearOfGlobe = (p: THREE.Vector3) => Math.hypot(p.x * 1.35, p.y) > 0.62;
+    let a = new THREE.Vector3();
+    let b = new THREE.Vector3();
+    for (let attempt = 0; attempt < 10; attempt++) {
+      if (meteor) {
+        // Estrella fugaz: tramo corto en diagonal descendente.
+        const x0 = (rand() * 2 - 1) * 1.05;
+        const y0 = -0.2 + rand() * 1.15;
+        const sx = rand() < 0.5 ? -1 : 1;
+        const len = 0.4 + rand() * 0.4;
+        a.set(x0, y0, 0.5);
+        b.set(x0 + sx * len * 0.85, y0 - len * 0.6, 0.5);
+      } else {
+        // Cometa: cruza la parte alta del cielo de lado a lado.
+        const fromLeft = rand() < 0.5;
+        const y0 = 0.55 + rand() * 0.4;
+        a.set(fromLeft ? -1.25 : 1.25, y0, 0.5);
+        b.set(fromLeft ? 0.5 + rand() * 0.7 : -0.5 - rand() * 0.7, y0 - 0.15 - rand() * 0.3, 0.5);
+      }
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      if (clearOfGlobe(a) && clearOfGlobe(b) && clearOfGlobe(mid)) break;
+    }
+    a = a.clone();
+    b = b.clone();
+    a.unproject(camera);
+    b.unproject(camera);
     const camPos = camera.getWorldPosition(new THREE.Vector3());
     const start = a.sub(camPos).normalize().multiplyScalar(depth).add(camPos);
     const end = b.sub(camPos).normalize().multiplyScalar(depth).add(camPos);
@@ -357,35 +411,45 @@ export function createComets(pixelRatio = 1): CometSystem {
     const sizes = geometry.getAttribute('size') as THREE.BufferAttribute;
     const alphas = geometry.getAttribute('alpha') as THREE.BufferAttribute;
     const tints = geometry.getAttribute('tint') as THREE.BufferAttribute;
+    const [c0, c1] = meteor ? METEOR_TAIL : COMET_TAIL;
+    const head = meteor ? 6.5 : 11;
+    const body = meteor ? 3.2 : 6.5;
     for (let i = 0; i < TRAIL; i++) {
       const k = i / (TRAIL - 1);
-      sizes.setX(i, i === 0 ? 7 : 4.5 * (1 - k) + 0.8);
-      alphas.setX(i, i === 0 ? 1 : Math.pow(1 - k, 1.6) * 0.55);
-      const c = new THREE.Color().lerpColors(new THREE.Color('#f4fbff'), new THREE.Color('#5fd7d2'), Math.min(1, k * 1.4));
+      sizes.setX(i, i === 0 ? head : body * (1 - k) + 0.8);
+      alphas.setX(i, 0);
+      const c = new THREE.Color().lerpColors(c0, c1, Math.min(1, k * 1.4));
       tints.setXYZ(i, c.r, c.g, c.b);
     }
     const points = new THREE.Points(geometry, material);
     points.frustumCulled = false;
     group.add(points);
-    const speed = dist / (3.2 + rand() * 1.8);
-    comets.push({ points, start, dir, speed, age: 0, life: dist / speed });
+    const life = meteor ? 0.55 + rand() * 0.5 : 3.2 + rand() * 1.8;
+    const speed = dist / life;
+    comets.push({
+      points, start, dir, speed, age: 0, life,
+      spacing: meteor ? (0.3 * life) / TRAIL : 0.012,
+      fadeIn: meteor ? 0.08 : 0.6,
+      tailOut: meteor ? 0.35 : 1.2,
+      tailAlpha: meteor ? 0.8 : 0.7,
+    });
   }
 
   function burst(c: Comet) {
-    const n = 110;
+    const n = 150;
     const geometry = makeGeometry(n);
     const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
     const sizes = geometry.getAttribute('size') as THREE.BufferAttribute;
     const tints = geometry.getAttribute('tint') as THREE.BufferAttribute;
-    const head = c.start.clone().addScaledVector(c.dir, c.speed * c.age);
+    const head = c.start.clone().addScaledVector(c.dir, c.speed * Math.min(c.age, c.life));
     const velocities = new Float32Array(n * 3);
     const palette = ['#ffffff', '#bdf4ff', '#5fd7d2', '#a68bff'].map((h) => new THREE.Color(h));
     for (let i = 0; i < n; i++) {
       pos.setXYZ(i, head.x, head.y, head.z);
-      const d = randomOnSphere(rand).multiplyScalar(60 + rand() * 260);
+      const d = randomOnSphere(rand).multiplyScalar(120 + rand() * 420);
       d.addScaledVector(c.dir, c.speed * 0.25);
       velocities.set([d.x, d.y, d.z], i * 3);
-      sizes.setX(i, 1.5 + rand() * 3.5);
+      sizes.setX(i, 2 + rand() * 4.5);
       const col = palette[Math.floor(rand() * palette.length)];
       tints.setXYZ(i, col.r, col.g, col.b);
     }
@@ -393,6 +457,20 @@ export function createComets(pixelRatio = 1): CometSystem {
     points.frustumCulled = false;
     group.add(points);
     bursts.push({ points, velocities, age: 0, life: 1.7 });
+  }
+
+  /** Índice del cometa cuya cabeza está a menos de ~36 px del punto, o -1. */
+  function findNear(x: number, y: number, width: number, height: number, camera: THREE.Camera): number {
+    for (let i = comets.length - 1; i >= 0; i--) {
+      const c = comets[i];
+      if (c.age > c.life) continue;
+      const head = c.start.clone().addScaledVector(c.dir, c.speed * Math.min(c.age, c.life)).project(camera);
+      if (head.z > 1) continue;
+      const sx = ((head.x + 1) / 2) * width;
+      const sy = ((1 - head.y) / 2) * height;
+      if (Math.hypot(sx - x, sy - y) < 36) return i;
+    }
+    return -1;
   }
 
   function removeComet(i: number) {
@@ -404,31 +482,38 @@ export function createComets(pixelRatio = 1): CometSystem {
 
   return {
     group,
-    spawnNow: spawn,
+    spawnNow: (camera) => spawn(camera, 'comet'),
     update: (dt, camera, enabled) => {
       if (enabled) {
         nextSpawn -= dt;
-        if (nextSpawn <= 0 && comets.length < 2) {
-          spawn(camera);
-          nextSpawn = 24 + rand() * 34;
+        nextMeteor -= dt;
+        const active = (kind: FlyerKind) => comets.filter((c) => (kind === 'meteor' ? c.life < 2 : c.life >= 2)).length;
+        if (nextSpawn <= 0 && active('comet') < 2) {
+          spawn(camera, 'comet');
+          nextSpawn = 11 + rand() * 11;
+        }
+        if (nextMeteor <= 0 && active('meteor') < 3) {
+          spawn(camera, 'meteor');
+          nextMeteor = 2.5 + rand() * 4;
         }
       }
       for (let i = comets.length - 1; i >= 0; i--) {
         const c = comets[i];
         c.age += dt;
-        if (c.age > c.life + 1.2) {
+        if (c.age > c.life + c.tailOut) {
           removeComet(i);
           continue;
         }
         const pos = c.points.geometry.getAttribute('position') as THREE.BufferAttribute;
-        const headDist = c.speed * c.age;
-        const fade = Math.min(1, c.age / 0.6) * Math.min(1, (c.life + 1.2 - c.age) / 1.0);
+        // La cabeza se detiene al final del recorrido y la cola se recoge mientras se apaga.
+        const headDist = c.speed * Math.min(c.age, c.life);
+        const fade = Math.min(1, c.age / c.fadeIn) * Math.min(1, (c.life + c.tailOut - c.age) / c.tailOut);
         const alphas = c.points.geometry.getAttribute('alpha') as THREE.BufferAttribute;
         for (let k = 0; k < TRAIL; k++) {
-          const back = Math.min(headDist, k * c.speed * 0.012);
+          const back = Math.min(headDist, k * c.speed * c.spacing);
           tmp.copy(c.start).addScaledVector(c.dir, headDist - back);
           pos.setXYZ(k, tmp.x, tmp.y, tmp.z);
-          const base = k === 0 ? 1 : Math.pow(1 - k / (TRAIL - 1), 1.6) * 0.55;
+          const base = k === 0 ? 1 : Math.pow(1 - k / (TRAIL - 1), 1.5) * c.tailAlpha;
           alphas.setX(k, base * fade);
         }
         pos.needsUpdate = true;
@@ -460,21 +545,13 @@ export function createComets(pixelRatio = 1): CometSystem {
       }
     },
     hitTest: (x, y, width, height, camera) => {
-      for (let i = comets.length - 1; i >= 0; i--) {
-        const c = comets[i];
-        if (c.age > c.life) continue;
-        const head = c.start.clone().addScaledVector(c.dir, c.speed * c.age).project(camera);
-        if (head.z > 1) continue;
-        const sx = ((head.x + 1) / 2) * width;
-        const sy = ((1 - head.y) / 2) * height;
-        if (Math.hypot(sx - x, sy - y) < 30) {
-          burst(c);
-          removeComet(i);
-          return true;
-        }
-      }
-      return false;
+      const i = findNear(x, y, width, height, camera);
+      if (i < 0) return false;
+      burst(comets[i]);
+      removeComet(i);
+      return true;
     },
+    isNear: (x, y, width, height, camera) => findNear(x, y, width, height, camera) >= 0,
     dispose: () => {
       comets.forEach((c) => c.points.geometry.dispose());
       bursts.forEach((b) => b.points.geometry.dispose());

@@ -1,6 +1,6 @@
 # NasaAppChallenge2026-Frontend
 
-**Observatorio** (nombre provisional) — observatorio 3D de actividad térmica terrestre para el reto **Harmonization of MODIS and VIIRS Hot Spots** (NASA Space Apps Challenge 2026).
+**Vigía** — una estrella vigilante que observa la Tierra: observatorio 3D de actividad térmica terrestre para el reto **Harmonization of MODIS and VIIRS Hot Spots** (NASA Space Apps Challenge 2026).
 Planeta interactivo con celdas **H3 auténticas**, capas **MODIS / VIIRS / Armonizado / Predicción experimental**, calendario histórico,
 comparación de sensores, vista regional inmersiva y una estrella guardiana («Vigía») que representa al sistema de observación.
 
@@ -42,7 +42,9 @@ Copia `.env.example` a `.env.local`:
 
 ## Cambiar el nombre del proyecto
 
-El nombre definitivo está pendiente. Todo el branding sale de **`src/config/brand.ts`** (`name`, `fullName`, `codename`, `mascotName`…).
+El producto se llama **Vigía**, como la estrella guardiana (sin cara; su rasgo es el visor de vigía). Todo el branding sale de
+**`src/config/brand.ts`** (`name`, `fullName`, `mascotName`, alternativas en `nameProposals`).
+El favicon (`src/app/icon.svg`) usa la misma silueta que la mascota; se regenera con `node scripts/generate-icon.mjs`.
 Parámetros de la experiencia (fecha inicial, vista inicial, umbrales de zoom, duración de la intro) en **`src/config/app.ts`**.
 
 ## Conectar FastAPI

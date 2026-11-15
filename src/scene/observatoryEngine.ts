@@ -21,6 +21,8 @@ import {
   type GridLayer, type ScanController, type SymbolDatum, type SymbolLayer,
 } from './dataLayers';
 import { createGuardianStar, type GuardianStar } from './guardianStar';
+import { createMoon, type Moon } from './moon';
+import { appConfig } from '@/config/app';
 
 export interface EngineEffects {
   scanWave: boolean;
@@ -78,6 +80,7 @@ export class ObservatoryEngine {
   private dust: Dust;
   private comets: CometSystem;
   private clouds: CloudLayer | null = null;
+  private moon: Moon;
   private symbols: SymbolLayer;
   private grid: GridLayer;
   private earth: EarthMaterialHandle | null = null;
@@ -142,6 +145,10 @@ export class ObservatoryEngine {
       this.clouds = createClouds(GLOBE_RADIUS * 1.0016, quality);
       this.scene.add(this.clouds.mesh);
     }
+
+    const v = appConfig.initialView;
+    this.moon = createMoon(polarToCartesian(v.lat, v.lng, 0, new THREE.Vector3()).normalize());
+    this.scene.add(this.moon.mesh);
 
     this.mascot = createGuardianStar({ quality });
     this.scene.add(this.camera);
@@ -298,6 +305,7 @@ export class ObservatoryEngine {
       this.clouds.mesh.visible = cloudTarget > 0.001 || (this.clouds.mesh.material as THREE.ShaderMaterial).uniforms.opacity.value > 0.002;
     }
 
+    this.moon.update(this.effects.reducedMotion ? 0 : dt, sun);
     this.starfield.update(t);
     if (this.effects.ambient) this.dust.update(t, this.effects.reducedMotion ? 0 : dt);
     this.comets.update(dt, camera, this.effects.ambient && !this.effects.reducedMotion && this.visible);
@@ -398,8 +406,15 @@ export class ObservatoryEngine {
     } else if (!near && !this.focusWorld) {
       this.mascot.lookAtWorld(null);
     }
-    this.canvas.style.cursor = Math.hypot(x - m.x, y - m.y) < m.r ? 'pointer' : '';
+    const overMascot = Math.hypot(x - m.x, y - m.y) < m.r;
+    const overComet = !overMascot && this.comets.isNear(x, y, rect.width, rect.height, this.camera) && !this.globe.toGlobeCoords(x, y);
+    // Solo se fuerza el cursor sobre la estrella o un cometa; el resto lo gestiona globe.gl.
+    if (overMascot || overComet) this.canvas.style.cursor = 'pointer';
+    else if (this.canvas.style.cursor === 'pointer' && this.cursorForced) this.canvas.style.cursor = '';
+    this.cursorForced = overMascot || overComet;
   };
+
+  private cursorForced = false;
 
   private onPointerUp = (e: PointerEvent) => {
     const down = this.pointerDown;
@@ -428,6 +443,8 @@ export class ObservatoryEngine {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.scene.remove(this.starfield.group, this.dust.points, this.comets.group, this.scan.mesh, this.symbols.points, this.grid.lines);
     if (this.clouds) this.scene.remove(this.clouds.mesh);
+    this.scene.remove(this.moon.mesh);
+    this.moon.dispose();
     this.camera.remove(this.mascot.root);
     this.starfield.dispose();
     this.dust.dispose();

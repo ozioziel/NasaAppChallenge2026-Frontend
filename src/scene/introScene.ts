@@ -14,6 +14,7 @@ import { createDust, createStarfield, type Dust, type Starfield } from './space'
 import { createGuardianStar, type GuardianStar } from './guardianStar';
 import { createScan, GLOBE_RADIUS, polarToCartesian, type ScanController } from './dataLayers';
 import { perchFor } from './perch';
+import { createMoon, type Moon } from './moon';
 
 export interface IntroCallbacks {
   /** Momento de reanudar el render del observatorio (antes del relevo). */
@@ -37,6 +38,7 @@ export class IntroScene {
   private atmosphere: THREE.Mesh;
   private clouds: CloudLayer;
   private scan: ScanController;
+  private moon: Moon;
   private star: GuardianStar;
   private timeline: gsap.core.Timeline | null = null;
   private frame = 0;
@@ -88,6 +90,9 @@ export class IntroScene {
     this.scene.add(this.clouds.mesh);
     this.scan = createScan();
     this.scene.add(this.scan.mesh);
+    const v0 = appConfig.initialView;
+    this.moon = createMoon(polarToCartesian(v0.lat, v0.lng, 0, new THREE.Vector3()).normalize());
+    this.scene.add(this.moon.mesh);
 
     this.scene.add(new THREE.AmbientLight(0xcccccc, Math.PI * 0.6));
     const key = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
@@ -284,6 +289,7 @@ export class IntroScene {
     this.earth.setSun(sun);
     this.clouds.setSun(sun);
     this.clouds.update(dt);
+    this.moon.update(0, sun);
     (this.earth.material.uniforms.exposure as THREE.IUniform<number>).value = p.earth;
     (this.atmosphere.material as THREE.ShaderMaterial).uniforms.intensity.value = p.earth;
     this.starfield.setOpacity(p.stars);
@@ -313,6 +319,7 @@ export class IntroScene {
     (this.atmosphere.material as THREE.Material).dispose();
     this.clouds.dispose();
     this.scan.dispose();
+    this.moon.dispose();
     this.star.dispose();
     this.renderer.dispose();
     this.canvas.remove();

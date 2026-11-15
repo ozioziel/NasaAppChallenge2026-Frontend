@@ -5,6 +5,7 @@
  *  - Mensajes de estado de la estrella guardiana junto a ella.
  */
 import { useEffect, useRef } from 'react';
+import { brand } from '@/config/brand';
 import { cellCenter } from '@/lib/geo/h3';
 import { globeBridge, type GlobeBridge } from '@/scene/bridge';
 import { useRegionMap } from '@/hooks/data';
@@ -112,7 +113,7 @@ export function MascotStatus() {
     <div ref={boxRef} className="mascot-status" aria-live="polite">
       {message && phase === 'observatory' && view === 'global' && (
         <p key={nonce} className={`mascot-status__msg mascot-status__msg--${tone}`}>
-          <span className="mascot-status__name">Vigía</span>
+          <span className="mascot-status__name">{brand.mascotName}</span>
           {message}
         </p>
       )}
